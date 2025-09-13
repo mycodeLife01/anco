@@ -1,0 +1,8 @@
+# Descriptions of pydantic anime model fields
+AnimeRec:
+  anime_name: "推荐的动漫名称"
+  score: "该推荐动漫的推荐得分"
+
+AnimeRecList:
+  rec_list: "推荐的动漫列表,每个元素为AnimeRec类型"
+  alternatives: "备选的动漫列表,每个元素为AnimeRec类型"
