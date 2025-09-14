@@ -1,4 +1,4 @@
-from openai import OpenAI
+from openai import AsyncOpenAI
 from loguru import logger
 from core.config_loader import config
 from models.anime import AnimeRecList
@@ -6,7 +6,7 @@ from models.anime import AnimeRecList
 
 class AnimeRecommenderAgent:
     # 接收llm客户端和model名称作为参数
-    def __init__(self, client: OpenAI, model: str):
+    def __init__(self, client: AsyncOpenAI, model: str):
         self.llm = client
         self.model = model
 
@@ -18,14 +18,14 @@ class AnimeRecommenderAgent:
             config.prompts.anime_recommender.message.UserMessage.content
         )
 
-    def get_recommendation(self, user_anime_list: list[str]) -> AnimeRecList | None:
+    async def get_recommendation(self, user_anime_list: list[str]) -> AnimeRecList | None:
         try:
             # 使用self.user_prompt_template
             user_prompt = self.user_prompt_template.format(
                 user_anime_list=user_anime_list
             )
 
-            completion = self.llm.chat.completions.parse(
+            completion = await self.llm.chat.completions.parse(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": self.system_prompt},

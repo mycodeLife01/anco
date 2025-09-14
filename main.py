@@ -1,48 +1,63 @@
 import os
-from openai import OpenAI
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from loguru import logger
 from core.agent import AnimeRecommenderAgent
+from fastapi import FastAPI, Request, Depends
+import uvicorn
+from models.schema import UserAnimeList
+from contextlib import asynccontextmanager
 
 
-def main():
-    # 1. 集中管理配置和初始化
+# --- 1. 将初始化逻辑直接放入 lifespan，并实现“快速失败” ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("--------------Anco Beta Test Starting--------------")
+
+    # 加载环境变量
     load_dotenv()
     logger.add("app.log")
 
-    API_KEY = os.getenv("API_KEY")
-    BASE_URL = os.getenv("BASE_URL")
-    MODEL = "openai/gpt-5-mini"  # 或者从config文件读取
+    # 检查关键配置，如果缺失则直接抛出异常，阻止应用启动
+    api_key = os.getenv("API_KEY")
+    base_url = os.getenv("BASE_URL")
+    if not api_key or not base_url:
+        error_msg = "API_KEY or BASE_URL not found in environment variables. Application cannot start."
+        logger.critical(error_msg)
+        raise ValueError(error_msg)  # <<< CHANGE: 抛出异常，启动失败
 
-    if not API_KEY:
-        logger.error("API_KEY not found in environment variables.")
-        return
+    # --- 2. 使用 app.state 存储共享的 agent 实例 ---
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+    model = "openai/gpt-4.1-mini"
+    # 将 agent 实例附加到 app.state
+    app.state.agent = AnimeRecommenderAgent(client=client, model=model)
+    logger.info("Agent initialized successfully.")
 
-    # 2. 创建一次客户端实例
-    client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+    yield
 
-    # 3. 将依赖项注入到Agent中
-    agent = AnimeRecommenderAgent(client=client, model=MODEL)
+    logger.info("--------------Anco Beta Test Stopped--------------")
 
-    print("你好！我是你的专属动漫推荐助手Anco。")
-    # ...
-    while True:
-        user_input = input("请输入你喜欢的动漫列表（用英文逗号分隔）: ")
-        if user_input.lower() in ["退出", "exit", "quit"]:
-            break
 
-        anime_list = [anime.strip() for anime in user_input.split(",")]
-        recommendations = agent.get_recommendation(anime_list)
+app = FastAPI(lifespan=lifespan)
 
-        if recommendations:
-            print("\n--- Anco的推荐 ---")
-            for rec in recommendations.rec_list:
-                print(f"动漫名称: {rec.anime_name}")
-                print(f"推荐得分: {rec.score}")
-                print("-" * 10)
-        else:
-            print("抱歉，暂时无法获取推荐。")
+
+# --- 3. (可选但推荐) 使用依赖注入获取 agent ---
+# 这个依赖函数让路径操作的依赖关系更清晰
+def get_agent(request: Request) -> AnimeRecommenderAgent:
+    return request.app.state.agent
+
+
+# --- 5. 将路径操作改为 async，并使用 Depends ---
+@app.post("/recommend")
+async def recommend(
+    user_anime_list: UserAnimeList,
+    agent: AnimeRecommenderAgent = Depends(get_agent),  # <<< CHANGE: 使用依赖注入
+):
+    recommendation = await agent.get_recommendation(user_anime_list.user_anime_list)
+    if not recommendation:
+        return {"detail": "An internal error occurred."}
+    return recommendation
 
 
 if __name__ == "__main__":
-    main()
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
