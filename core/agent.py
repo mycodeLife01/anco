@@ -25,7 +25,7 @@ class AnimeRecommenderAgent:
                 user_anime_list=user_anime_list
             )
 
-            completion = await self.llm.chat.completions.parse(
+            completion = await self.chat.completions.parse(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": self.system_prompt},
